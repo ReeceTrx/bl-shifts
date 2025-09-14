@@ -40,9 +40,20 @@ The application requires the following environment variables to be set:
    ```
 
 ## Usage
+
+### Running Locally
 Run the application:
 ```bash
 go run main.go
+```
+
+### Running with Docker
+You can also run the application using the pre-built Docker image:
+```bash
+docker run --rm \
+  -e DISCORD_WEBHOOK_URL=<your-discord-webhook-url> \
+  -e REDIS_ADDR=localhost:6379 \
+  ghcr.io/imdevinc/bl-shifts:latest
 ```
 
 ## How It Works
