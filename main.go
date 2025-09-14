@@ -41,12 +41,10 @@ type DiscordWebhookField struct {
 
 const SUBREDDIT_URL = "https://www.reddit.com/r/borderlandsshiftcodes.json"
 
-var discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
-var redisAddr = os.Getenv("REDIS_ADDR")
-
 var (
-	rdb *redis.Client
-	ctx = context.Background()
+	redisAddr      = os.Getenv("REDIS_ADDR")
+	discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
+	rdb            *redis.Client
 )
 
 func main() {
@@ -99,6 +97,7 @@ func main() {
 func storeAndFilterCodes(allCodes []string) ([]string, error) {
 	codesToSend := []string{}
 
+	ctx := context.Background()
 	for _, code := range allCodes {
 		exists, err := rdb.SIsMember(ctx, "shift_codes", code).Result()
 		if err != nil {
