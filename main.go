@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-redis/redis/v8"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type SubredditResponse struct {
@@ -17,7 +19,17 @@ type SubredditResponse struct {
 		Children []struct {
 			Data struct {
 				Text string `json:"selftext"`
-				Name string `json:"name"`
+				ID   string `json:"id"`
+			} `json:"data"`
+		} `json:"children"`
+	} `json:"data"`
+}
+
+type SubredditCommentResponse []struct {
+	Data struct {
+		Children []struct {
+			Data struct {
+				Body string `json:"body"`
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
@@ -39,9 +51,10 @@ type DiscordWebhookField struct {
 	Inline bool   `json:"inline"`
 }
 
-const SUBREDDIT_URL = "https://www.reddit.com/r/borderlandsshiftcodes.json"
+const SUBREDDIT_URL = "https://www.reddit.com/r/borderlandsshiftcodes"
 
 var (
+	shiftCodeRe    = regexp.MustCompile(`(\w{5}-){4}\w{5}`)
 	redisAddr      = os.Getenv("REDIS_ADDR")
 	discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
 	rdb            *redis.Client
@@ -58,24 +71,24 @@ func main() {
 		slog.Warn("DISCORD_WEBHOOK_URL not set, will not send notifications")
 	}
 
-	shiftCodeRe := regexp.MustCompile(`(\w{5}-){4}\w{5}`)
 	srResponse, err := getLatestPosts()
 	if err != nil {
 		slog.Error("failed to get latest posts", "error", err)
 		os.Exit(1)
 	}
-	allCodes := []string{}
-	for _, child := range srResponse.Data.Children {
-		matches := shiftCodeRe.FindAllString(child.Data.Text, -1)
-		if len(matches) == 0 {
-			continue
-		}
-		for _, code := range matches {
-			slog.Debug("found shift code", "code", code)
-			allCodes = append(allCodes, code)
+	allCodes := getCodesFromPosts(srResponse)
+
+	finalCodes := []string{}
+	codeSet := map[string]bool{}
+
+	for _, code := range allCodes {
+		if !codeSet[code] {
+			finalCodes = append(finalCodes, code)
+			codeSet[code] = true
 		}
 	}
-	codesToSend, err := storeAndFilterCodes(allCodes)
+
+	codesToSend, err := storeAndFilterCodes(finalCodes)
 	if err != nil {
 		slog.Error("failed to get latest posts", "error", err)
 		os.Exit(1)
@@ -94,6 +107,47 @@ func main() {
 		slog.Info("sent shift codes to discord")
 	}
 }
+
+func getCodesFromPosts(srResponse *SubredditResponse) []string {
+	codes := []string{}
+	for _, child := range srResponse.Data.Children {
+		matches := shiftCodeRe.FindAllString(child.Data.Text, -1)
+		if len(matches) == 0 {
+			slog.Debug("no shift codes found in post, checking comments", "post_id", child.Data.ID)
+			comments, err := getCommentsForPost(child.Data.ID)
+			if err != nil {
+				slog.Error("failed to get comments for post", "error", err)
+				continue
+			}
+			commentCodes := getCodesFromComments(comments)
+			codes = append(codes, commentCodes...)
+			continue
+		}
+		for _, code := range matches {
+			slog.Debug("found shift code", "code", code)
+			codes = append(codes, code)
+		}
+	}
+	return codes
+}
+
+func getCodesFromComments(srResponse *SubredditCommentResponse) []string {
+	codes := []string{}
+	for _, comment := range *srResponse {
+		for _, child := range comment.Data.Children {
+			matches := shiftCodeRe.FindAllString(child.Data.Body, -1)
+			if len(matches) == 0 {
+				continue
+			}
+			for _, code := range matches {
+				slog.Debug("found shift code", "code", code)
+				codes = append(codes, code)
+			}
+		}
+	}
+	return codes
+}
+
 func storeAndFilterCodes(allCodes []string) ([]string, error) {
 	codesToSend := []string{}
 
@@ -113,11 +167,44 @@ func storeAndFilterCodes(allCodes []string) ([]string, error) {
 }
 
 func getLatestPosts() (*SubredditResponse, error) {
-	newUrl := fmt.Sprintf("%s?sort=new&t=day", SUBREDDIT_URL)
+	newUrl := fmt.Sprintf("%s.json?sort=new&t=day", SUBREDDIT_URL)
 	req, err := http.NewRequest(http.MethodGet, newUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	response, err := doSubredditRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do subreddit request: %w", err)
+	}
+
+	var srResponse SubredditResponse
+	err = json.Unmarshal(response, &srResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal subreddit response: %w", err)
+	}
+	return &srResponse, nil
+}
+
+func getCommentsForPost(postID string) (*SubredditCommentResponse, error) {
+	commentsUrl := fmt.Sprintf("%s/comments/%s.json", SUBREDDIT_URL, postID)
+	req, err := http.NewRequest(http.MethodGet, commentsUrl, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	respose, err := doSubredditRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do subreddit request: %w", err)
+	}
+	var commentsResponse SubredditCommentResponse
+	err = json.Unmarshal(respose, &commentsResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal comments response: %w", err)
+	}
+	return &commentsResponse, nil
+}
+
+func doSubredditRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("User-Agent", "shift-code-fetcher/0.1 by ImDevinC")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -127,11 +214,11 @@ func getLatestPosts() (*SubredditResponse, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected error code: %d", resp.StatusCode)
 	}
-	var srResponse SubredditResponse
-	if err := json.NewDecoder(resp.Body).Decode(&srResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	return &srResponse, nil
+	return body, nil
 }
 
 func sendToDiscord(codes []string) error {
