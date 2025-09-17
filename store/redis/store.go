@@ -8,7 +8,7 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-type Store struct {
+type redisStore struct {
 	rdb *redis.Client
 }
 
@@ -16,12 +16,12 @@ func NewStore(address string) store.Store {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: address,
 	})
-	return &Store{
+	return &redisStore{
 		rdb: rdb,
 	}
 }
 
-func (s *Store) FilterAndSaveCodes(ctx context.Context, codes []string) ([]string, error) {
+func (s *redisStore) FilterAndSaveCodes(ctx context.Context, codes []string) ([]string, error) {
 	codesToSend := []string{}
 	for _, code := range codes {
 		exists, err := s.rdb.SIsMember(ctx, "shift_codes", code).Result()
