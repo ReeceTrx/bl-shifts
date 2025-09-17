@@ -5,94 +5,103 @@ import (
 	"bl-shifts/notifiers/discord"
 	"bl-shifts/retrievers"
 	"bl-shifts/retrievers/reddit"
+	"bl-shifts/store"
+	"bl-shifts/store/file"
+	"bl-shifts/store/redis"
 	"context"
-	"fmt"
+	"flag"
 	"log/slog"
 	"os"
 	"strings"
-
-	"github.com/go-redis/redis/v8"
-)
-
-var (
-	redisAddr      = os.Getenv("REDIS_ADDR")
-	discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
-	rdb            *redis.Client
+	"time"
 )
 
 func main() {
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	rdb = redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
-	if discordWebhook == "" {
-		slog.Warn("DISCORD_WEBHOOK_URL not set, will not send notifications")
+	cfg := LoadConfig()
+
+	var store store.Store
+	if cfg.RedisAddr != "" && cfg.Filename == "" {
+		store = redis.NewStore(cfg.RedisAddr)
+	} else if cfg.Filename != "" && cfg.RedisAddr == "" {
+		store = file.NewStore(cfg.Filename)
+	} else if cfg.Filename == "" && cfg.RedisAddr == "" {
+		slog.Warn("no storage method specified, defaulting to file 'codes.json'")
+		store = file.NewStore("codes.json")
+	} else {
+		slog.Error("either REDIS_ADDR or FILENAME must be set, but not both")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	retrievers := []retrievers.Retriever{
 		reddit.NewRetriever("borderlandsshiftcodes"),
 	}
 	notifiers := []notifiers.Notifier{}
-	if discordWebhook != "" {
-		notifiers = append(notifiers, discord.NewNotifier(discordWebhook))
+	if cfg.DiscordWebhookURL != "" {
+		notifiers = append(notifiers, discord.NewNotifier(cfg.DiscordWebhookURL))
 	}
 
-	allCodes := []string{}
+	lastRunError := false
+	runs := 0
 
-	for _, retriever := range retrievers {
-		codes, err := retriever.GetCodes()
-		if err != nil {
-			slog.Error("failed to get codes from retriever", "error", err)
+	for {
+		if cfg.IntervalMinutes == 0 && runs > 0 {
+			break
+		}
+		if runs > 0 {
+			slog.Info("waiting for next interval", "minutes", cfg.IntervalMinutes)
+			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
+		}
+		slog.Info("checking for new shift codes")
+		lastRunError = false
+		runs++
+
+		allCodes := []string{}
+
+		for _, retriever := range retrievers {
+			codes, err := retriever.GetCodes()
+			if err != nil {
+				slog.Error("failed to get codes from retriever", "error", err)
+				lastRunError = true
+				continue
+			}
+			allCodes = append(allCodes, codes...)
+		}
+		if lastRunError {
 			continue
 		}
-		allCodes = append(allCodes, codes...)
-	}
 
-	existingCodes := map[string]bool{}
-	finalCodes := []string{}
-	for _, code := range allCodes {
-		if !existingCodes[code] {
-			finalCodes = append(finalCodes, code)
-			existingCodes[code] = true
+		existingCodes := map[string]bool{}
+		finalCodes := []string{}
+		for _, code := range allCodes {
+			if !existingCodes[code] {
+				finalCodes = append(finalCodes, code)
+				existingCodes[code] = true
+			}
+		}
+
+		ctx := context.Background()
+		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
+		if err != nil {
+			slog.Error("failed to filter codes", "error", err)
+			lastRunError = true
+			continue
+		}
+		if len(codesToSend) == 0 {
+			slog.Info("no new shift codes found")
+			continue
+		}
+		slog.Info("found new shift codes", "codes", strings.Join(codesToSend, ", "))
+
+		for _, notifier := range notifiers {
+			err := notifier.Send(codesToSend)
+			if err != nil {
+				slog.Error("failed to send notification", "error", err)
+				lastRunError = true
+			}
 		}
 	}
-
-	codesToSend, err := storeAndFilterCodes(finalCodes)
-	if err != nil {
-		slog.Error("failed to get latest posts", "error", err)
+	if lastRunError {
 		os.Exit(1)
 	}
-	if len(codesToSend) == 0 {
-		slog.Info("no new shift codes found")
-		return
-	}
-	slog.Info("found new shift codes", "codes", strings.Join(codesToSend, ", "))
-
-	for _, notifier := range notifiers {
-		err := notifier.Send(codesToSend)
-		if err != nil {
-			slog.Error("failed to send notification", "error", err)
-		}
-	}
-}
-
-// storeAndFilterCodes checks Redis for existing codes, stores new ones, and returns only the new codes
-func storeAndFilterCodes(allCodes []string) ([]string, error) {
-	codesToSend := []string{}
-
-	ctx := context.Background()
-	for _, code := range allCodes {
-		exists, err := rdb.SIsMember(ctx, "shift_codes", code).Result()
-		if err != nil {
-			return nil, fmt.Errorf("failed to check Redis for code %s: %w", code, err)
-		}
-		if !exists {
-			codesToSend = append(codesToSend, code)
-			rdb.SAdd(ctx, "shift_codes", code)
-		}
-	}
-
-	return codesToSend, nil
 }
