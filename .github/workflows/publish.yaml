@@ -15,6 +15,7 @@ jobs:
   release:
     permissions:
       packages: write
+      contents: write
     uses: imdevinc/imdevinc/.github/workflows/shared-create-release.yaml@v1
     with:
       build-command: make release
