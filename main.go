@@ -5,33 +5,37 @@ import (
 	"bl-shifts/notifiers/discord"
 	"bl-shifts/retrievers"
 	"bl-shifts/retrievers/reddit"
+	"bl-shifts/store"
+	"bl-shifts/store/file"
 	"bl-shifts/store/redis"
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"strings"
 )
 
-var (
-	redisAddr      = os.Getenv("REDIS_ADDR")
-	discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
-)
-
 func main() {
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	if discordWebhook == "" {
-		slog.Warn("DISCORD_WEBHOOK_URL not set, will not send notifications")
+	cfg := LoadConfig()
+
+	slog.Info("configuration", "config", cfg)
+	var store store.Store
+	if cfg.RedisAddr != "" && cfg.Filename == "" {
+		store = redis.NewStore(cfg.RedisAddr)
+	} else if cfg.Filename != "" && cfg.RedisAddr == "" {
+		store = file.NewStore(cfg.Filename)
+	} else {
+		slog.Error("either REDIS_ADDR or FILENAME must be set, but not both")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
-	store := redis.NewStore(redisAddr)
 	retrievers := []retrievers.Retriever{
 		reddit.NewRetriever("borderlandsshiftcodes"),
 	}
 	notifiers := []notifiers.Notifier{}
-	if discordWebhook != "" {
-		notifiers = append(notifiers, discord.NewNotifier(discordWebhook))
+	if cfg.DiscordWebhookURL != "" {
+		notifiers = append(notifiers, discord.NewNotifier(cfg.DiscordWebhookURL))
 	}
 
 	allCodes := []string{}
