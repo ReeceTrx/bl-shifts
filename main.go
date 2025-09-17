@@ -5,32 +5,27 @@ import (
 	"bl-shifts/notifiers/discord"
 	"bl-shifts/retrievers"
 	"bl-shifts/retrievers/reddit"
+	"bl-shifts/store/redis"
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"strings"
-
-	"github.com/go-redis/redis/v8"
 )
 
 var (
 	redisAddr      = os.Getenv("REDIS_ADDR")
 	discordWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
-	rdb            *redis.Client
 )
 
 func main() {
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
 	}
-	rdb = redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
 	if discordWebhook == "" {
 		slog.Warn("DISCORD_WEBHOOK_URL not set, will not send notifications")
 	}
 
+	store := redis.NewStore(redisAddr)
 	retrievers := []retrievers.Retriever{
 		reddit.NewRetriever("borderlandsshiftcodes"),
 	}
@@ -59,9 +54,10 @@ func main() {
 		}
 	}
 
-	codesToSend, err := storeAndFilterCodes(finalCodes)
+	ctx := context.Background()
+	codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
 	if err != nil {
-		slog.Error("failed to get latest posts", "error", err)
+		slog.Error("failed to filter codes", "error", err)
 		os.Exit(1)
 	}
 	if len(codesToSend) == 0 {
@@ -76,23 +72,4 @@ func main() {
 			slog.Error("failed to send notification", "error", err)
 		}
 	}
-}
-
-// storeAndFilterCodes checks Redis for existing codes, stores new ones, and returns only the new codes
-func storeAndFilterCodes(allCodes []string) ([]string, error) {
-	codesToSend := []string{}
-
-	ctx := context.Background()
-	for _, code := range allCodes {
-		exists, err := rdb.SIsMember(ctx, "shift_codes", code).Result()
-		if err != nil {
-			return nil, fmt.Errorf("failed to check Redis for code %s: %w", code, err)
-		}
-		if !exists {
-			codesToSend = append(codesToSend, code)
-			rdb.SAdd(ctx, "shift_codes", code)
-		}
-	}
-
-	return codesToSend, nil
 }
