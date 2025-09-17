@@ -12,3 +12,11 @@ jobs:
       packages: write
       contents: read
     uses: imdevinc/imdevinc/.github/workflows/shared-publish-docker.yaml@v1
+  release:
+    permissions:
+      packages: write
+    uses: imdevinc/imdevinc/.github/workflows/shared-create-release.yaml@v1
+    with:
+      build-command: make release
+      files: |
+        out/bl-shifts-*-x64.*
