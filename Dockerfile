@@ -10,7 +10,7 @@ RUN go mod download
 
 COPY ./ ./
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /bl-shifts ./main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /bl-shifts ./*.go
 
 FROM --platform=${BUILDPLATFORM:-linux/amd64} gcr.io/distroless/static
 
