@@ -45,7 +45,7 @@ func (d *DiscordNotifier) Send(codes []string) error {
 			Embed: []DiscordWebhookEmbed{
 				{
 					Title:       "New Shift Codes",
-					Description: "Here are the latest shift codes",
+					Description: "Here are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards",
 					Fields:      []DiscordWebhookField{},
 				},
 			},
