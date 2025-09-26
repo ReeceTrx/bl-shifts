@@ -18,5 +18,6 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          go mod tidy
-          go run main.go
+go mod tidy
+go run .
+
