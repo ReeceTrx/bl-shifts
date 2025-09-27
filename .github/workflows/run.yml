@@ -23,11 +23,3 @@ jobs:
         run: |
           go mod tidy
           go run .
-      - name: Send Discord Test Message
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          curl -H "Content-Type: application/json" \
-               -d '{"content":"✅ Test message: BL-Shifts workflow is running!"}' \
-               $DISCORD_WEBHOOK_URL
