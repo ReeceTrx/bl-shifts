@@ -20,6 +20,7 @@ import (
 func main() {
 	cfg := LoadConfig()
 
+	// ====== Storage Setup ======
 	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		store = redis.NewStore(cfg.RedisAddr)
@@ -34,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup retrievers
+	// ====== Retrievers Setup ======
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -44,7 +45,7 @@ func main() {
 		),
 	}
 
-	// Setup notifiers
+	// ====== Notifiers Setup ======
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -66,33 +67,29 @@ func main() {
 		runs++
 
 		allCodes := []string{}
-		postAge := ""
+		var postTimestamp float64
 		postTitle := ""
 
+		// ====== Get Codes from Reddit ======
 		for _, retriever := range retrieversList {
-			codes, createdUTC, title, err := retriever.(*reddit.RedditRetriever).GetCodes()
+			codes, createdUTC, err := retriever.GetCodes()
 			if err != nil {
-				slog.Error("failed to get codes from Reddit", "error", err)
+				slog.Error("failed to get codes from retriever", "error", err)
 				lastRunError = true
-				continue
-			}
-			if codes == nil || len(codes) == 0 {
-				slog.Info("no new shift codes found in the latest post")
 				continue
 			}
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
-				duration := time.Since(time.Unix(int64(createdUTC), 0))
-				postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
+				postTimestamp = createdUTC
+				postTitle = "" // We can add title logging if desired
 			}
-			postTitle = title
 		}
 
 		if lastRunError {
 			continue
 		}
 
-		// Remove duplicates
+		// ====== Remove Duplicates ======
 		existingCodes := map[string]bool{}
 		finalCodes := []string{}
 		for _, code := range allCodes {
@@ -102,7 +99,7 @@ func main() {
 			}
 		}
 
-		// Save new codes
+		// ====== Save new codes ======
 		ctx := context.Background()
 		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
 		if err != nil {
@@ -111,26 +108,36 @@ func main() {
 			continue
 		}
 		if len(codesToSend) == 0 {
-			slog.Info("no new shift codes to send")
+			slog.Info("no new shift codes found in the latest post")
 			continue
 		}
 
-		// Format Discord message
+		// ====== Discord Message Formatting ======
+		postAge := ""
+		if postTimestamp != 0 {
+			postTime := time.Unix(int64(postTimestamp), 0)
+			duration := time.Since(postTime)
+			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
+		}
+
 		message := fmt.Sprintf(
 			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
 			strings.Join(codesToSend, "\n"),
 		)
+
 		if postTitle != "" {
-			message += fmt.Sprintf("\n\n*Post title:* %s", postTitle)
+			message += fmt.Sprintf("\n\n*Post title: %s*", postTitle)
 		}
 		if postAge != "" {
-			message += fmt.Sprintf("\n*Post age:* %s", postAge)
+			message += fmt.Sprintf("\n*Post age: %s*", postAge)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
+		// ====== Send to Discord ======
 		for _, notifier := range notifiersList {
-			if err := notifier.Send([]string{message}); err != nil {
+			err := notifier.Send([]string{message})
+			if err != nil {
 				slog.Error("failed to send notification", "error", err)
 				lastRunError = true
 			}
