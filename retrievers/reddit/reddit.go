@@ -120,8 +120,8 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	codes := codeRegex.FindAllString(postBody, -1)
 
 	// Return only the latest 3 codes
-	if len(codes) > 3 {
-		codes = codes[:3]
+	if len(codes) > 6 {
+		codes = codes[:6]
 	}
 
 	return codes, created, postTitle, nil
