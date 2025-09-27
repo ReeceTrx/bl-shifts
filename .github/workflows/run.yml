@@ -2,7 +2,8 @@ name: Run BL-Shifts
 
 on:
   schedule:
-     - cron: "0 */4 * * *"   # every 4 hours
+     - cron: "0 11 * * *"   # runs every day at 06:00 UTC
+
   workflow_dispatch: {}
 
 jobs:
