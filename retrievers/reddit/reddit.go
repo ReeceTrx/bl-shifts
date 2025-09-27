@@ -11,7 +11,25 @@ import (
 	"time"
 )
 
+// RedditRetriever stores subreddit and Reddit API credentials
+type RedditRetriever struct {
+	Subreddit    string
+	ClientID     string
+	ClientSecret string
+	UserAgent    string
+}
 
+// NewRetriever creates a new RedditRetriever
+func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
+	return &RedditRetriever{
+		Subreddit:    subreddit,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		UserAgent:    userAgent,
+	}
+}
+
+// RedditPost represents the structure of Reddit's /new.json response
 type RedditPost struct {
 	Data struct {
 		Children []struct {
@@ -20,6 +38,41 @@ type RedditPost struct {
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
+}
+
+// getToken retrieves a Reddit OAuth token
+func (r *RedditRetriever) getToken() (string, error) {
+	data := url.Values{}
+	data.Set("grant_type", "client_credentials")
+
+	req, err := http.NewRequest("POST", "https://www.reddit.com/api/v1/access_token", strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(r.ClientID, r.ClientSecret)
+	req.Header.Set("User-Agent", r.UserAgent)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to get token: %d", resp.StatusCode)
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	return result.AccessToken, nil
 }
 
 // GetCodes fetches the latest posts and extracts valid BL shift codes
@@ -54,8 +107,8 @@ func (r *RedditRetriever) GetCodes() ([]string, error) {
 		return nil, err
 	}
 
-	// Regex to match BL shift codes (letters/numbers, adjust pattern if needed)
-	codeRegex := regexp.MustCompile(`\b[A-Z0-9]{3,10}\b`)
+	// Regex to match BL shift codes (adjust if needed)
+	codeRegex := regexp.MustCompile(`\bBL[A-Z0-9]{2,10}\b`)
 
 	codes := []string{}
 	for _, child := range result.Data.Children {
