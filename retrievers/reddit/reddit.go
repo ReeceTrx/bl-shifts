@@ -71,7 +71,7 @@ func (r *RedditRetriever) getToken() (string, error) {
 func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	token, err := r.getToken()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("error getting Reddit token: %w", err)
 	}
 
 	url := fmt.Sprintf("https://oauth.reddit.com/r/%s/new.json?limit=1", r.Subreddit)
@@ -90,11 +90,17 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	}
 	defer resp.Body.Close()
 
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Detect if Reddit blocked the request
+	if resp.StatusCode == 429 || strings.Contains(string(body), "Whoa there") {
+		return nil, 0, fmt.Errorf("Reddit rate limit / block detected (status: %d). You may be sending too many requests from your IP.", resp.StatusCode)
+	}
+
 	if resp.StatusCode != 200 {
 		return nil, 0, fmt.Errorf("unexpected error code: %d", resp.StatusCode)
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
 	var result RedditPost
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, 0, err
