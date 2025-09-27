@@ -2,7 +2,7 @@ name: Run BL-Shifts
 
 on:
   schedule:
-     - cron: "0 11 * * *"   # runs every day at 06:00 UTC
+     - cron: '*/30 * * * *'  # scan for new codes every 30 minutes
 
   workflow_dispatch: {}
 
