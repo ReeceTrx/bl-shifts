@@ -9,8 +9,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"log/slog"
 )
 
 // RedditRetriever fetches posts from a subreddit
@@ -54,11 +52,12 @@ func (r *RedditRetriever) getToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
+	body, _ := ioutil.ReadAll(resp.Body)
+
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("failed to get Reddit token: %d", resp.StatusCode)
+		return "", fmt.Errorf("failed to get Reddit token: %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -114,9 +113,6 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	newest := result.Data.Children[0].Data
 	title := newest.Title
 	created := newest.CreatedUTC
-
-	// Log latest post title for debugging
-	slog.Info("latest Reddit post title", "title", title)
 
 	// Regex: match 5 blocks of 5 characters
 	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
