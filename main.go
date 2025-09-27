@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup retrievers
+	// Setup Reddit retriever
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -45,7 +45,7 @@ func main() {
 		),
 	}
 
-	// Setup notifiers
+	// Setup Discord notifier
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -71,14 +71,18 @@ func main() {
 		var postTitle string
 		var redditErr error
 
+		// Get codes from each retriever
 		for _, retriever := range retrieversList {
 			codes, createdUTC, title, err := retriever.GetCodes()
 			if err != nil {
 				slog.Error("failed to get codes from Reddit", "error", err)
+				fmt.Println("Reddit fetch error:", err) // log in workflow
 				redditErr = err
 				lastRunError = true
 				continue
 			}
+			fmt.Println("Reddit post title:", title)
+			fmt.Println("Codes found:", codes)
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
 				postTimestamp = createdUTC
@@ -87,7 +91,6 @@ func main() {
 		}
 
 		if redditErr != nil && len(allCodes) == 0 {
-			// send warning to Discord if blocked
 			for _, notifier := range notifiersList {
 				err := notifier.Send([]string{fmt.Sprintf("⚠️ Reddit fetch failed: %v", redditErr)})
 				if err != nil {
@@ -127,16 +130,19 @@ func main() {
 			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 		}
 
-		// Build Discord message safely using backticks
-		message := fmt.Sprintf(`**New Shift Codes**
-Here are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards
-
-**Post:** %s
-%s
-*Post age: %s*`, postTitle, strings.Join(codesToSend, "\n"), postAge)
+		// Prepare Discord message
+		message := fmt.Sprintf(
+			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n**Post:** %s\n%s",
+			postTitle,
+			strings.Join(codesToSend, "\n"),
+		)
+		if postAge != "" {
+			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
+		// Send to Discord
 		for _, notifier := range notifiersList {
 			err := notifier.Send([]string{message})
 			if err != nil {
