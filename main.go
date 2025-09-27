@@ -68,12 +68,14 @@ func main() {
 
 		allCodes := []string{}
 		var postTimestamp float64
+		var retrieverErr error
 
 		// Get codes from each retriever
 		for _, retriever := range retrieversList {
 			codes, createdUTC, err := retriever.GetCodes()
 			if err != nil {
 				slog.Error("failed to get codes from retriever", "error", err)
+				retrieverErr = err
 				lastRunError = true
 				continue
 			}
@@ -81,10 +83,6 @@ func main() {
 			if createdUTC != 0 {
 				postTimestamp = createdUTC
 			}
-		}
-
-		if lastRunError {
-			continue
 		}
 
 		// Remove duplicates
@@ -103,33 +101,32 @@ func main() {
 		if err != nil {
 			slog.Error("failed to filter codes", "error", err)
 			lastRunError = true
-			continue
 		}
 
 		// Prepare Discord message
-		messageParts := []string{"✅ Test message: BL-Shifts workflow is running!"}
+		message := "**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n"
 
-		if len(codesToSend) > 0 {
-			msg := fmt.Sprintf(
-				"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
-				strings.Join(codesToSend, "\n"),
-			)
-
+		if retrieverErr != nil {
+			// Reddit blocked or error occurred
+			message += fmt.Sprintf("\n⚠️ Could not fetch codes: %v", retrieverErr)
+		} else if len(codesToSend) == 0 {
+			// No new codes
+			message += "\n✅ Test message: BL-Shifts workflow is running!"
+		} else {
+			// Codes available
+			message += "\n" + strings.Join(codesToSend, "\n")
 			if postTimestamp != 0 {
 				postTime := time.Unix(int64(postTimestamp), 0)
 				duration := time.Since(postTime)
-				msg += fmt.Sprintf("\n\n*Post age: %.0f minutes ago*", duration.Minutes())
+				message += fmt.Sprintf("\n\n*Post age: %.0f minutes ago*", duration.Minutes())
 			}
-
-			messageParts = append(messageParts, msg)
 		}
 
-		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
+		slog.Info("sending Discord message", "message", message)
 
 		// Send to Discord
 		for _, notifier := range notifiersList {
-			err := notifier.Send(messageParts)
-			if err != nil {
+			if err := notifier.Send([]string{message}); err != nil {
 				slog.Error("failed to send notification", "error", err)
 				lastRunError = true
 			}
