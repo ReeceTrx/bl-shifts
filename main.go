@@ -19,7 +19,7 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// Set up storage
+	// Storage setup
 	var storeInstance store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		storeInstance = redis.NewStore(cfg.RedisAddr)
@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up Reddit retriever
+	// Reddit retriever
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -44,7 +44,7 @@ func main() {
 		),
 	}
 
-	// Set up Discord notifier
+	// Discord notifier
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
