@@ -20,7 +20,6 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// ====== Storage Setup ======
 	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		store = redis.NewStore(cfg.RedisAddr)
@@ -35,7 +34,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ====== Retrievers Setup ======
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -45,7 +43,6 @@ func main() {
 		),
 	}
 
-	// ====== Notifiers Setup ======
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -68,28 +65,36 @@ func main() {
 
 		allCodes := []string{}
 		var postTimestamp float64
-		postTitle := ""
+		var postTitle string
+		var redditErr error
 
-		// ====== Get Codes from Reddit ======
 		for _, retriever := range retrieversList {
-			codes, createdUTC, err := retriever.GetCodes()
+			codes, createdUTC, title, err := retriever.GetCodes()
 			if err != nil {
-				slog.Error("failed to get codes from retriever", "error", err)
+				slog.Error("failed to get codes from Reddit", "error", err)
+				redditErr = err
 				lastRunError = true
 				continue
 			}
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
 				postTimestamp = createdUTC
-				postTitle = "" // We can add title logging if desired
+				postTitle = title
 			}
 		}
 
-		if lastRunError {
+		if redditErr != nil && len(allCodes) == 0 {
+			// send warning to Discord if blocked
+			for _, notifier := range notifiersList {
+				err := notifier.Send([]string{fmt.Sprintf("⚠️ Reddit fetch failed: %v", redditErr)})
+				if err != nil {
+					slog.Error("failed to send Discord notification", "error", err)
+				}
+			}
 			continue
 		}
 
-		// ====== Remove Duplicates ======
+		// remove duplicates
 		existingCodes := map[string]bool{}
 		finalCodes := []string{}
 		for _, code := range allCodes {
@@ -99,7 +104,6 @@ func main() {
 			}
 		}
 
-		// ====== Save new codes ======
 		ctx := context.Background()
 		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
 		if err != nil {
@@ -112,39 +116,24 @@ func main() {
 			continue
 		}
 
-		// ====== Discord Message Formatting ======
 		postAge := ""
 		if postTimestamp != 0 {
-			postTime := time.Unix(int64(postTimestamp), 0)
-			duration := time.Since(postTime)
+			duration := time.Since(time.Unix(int64(postTimestamp), 0))
 			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 		}
 
 		message := fmt.Sprintf(
-			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
+			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n**Post:** %s\n%s",
+			postTitle,
 			strings.Join(codesToSend, "\n"),
 		)
-
-		if postTitle != "" {
-			message += fmt.Sprintf("\n\n*Post title: %s*", postTitle)
-		}
 		if postAge != "" {
-			message += fmt.Sprintf("\n*Post age: %s*", postAge)
+			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
-		// ====== Send to Discord ======
 		for _, notifier := range notifiersList {
 			err := notifier.Send([]string{message})
 			if err != nil {
-				slog.Error("failed to send notification", "error", err)
-				lastRunError = true
-			}
-		}
-	}
-
-	if lastRunError {
-		os.Exit(1)
-	}
-}
+				slog.Error("failed to send notification
