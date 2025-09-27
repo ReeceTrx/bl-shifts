@@ -1,3 +1,5 @@
+package reddit
+
 import (
 	"encoding/json"
 	"fmt"
@@ -8,6 +10,7 @@ import (
 	"strings"
 	"time"
 )
+
 
 type RedditPost struct {
 	Data struct {
