@@ -17,9 +17,9 @@ func NewNotifier(webhookURL string) *Notifier {
 }
 
 type Embed struct {
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Color       int    `json:"color,omitempty"`
+	Title       string  `json:"title,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Color       int     `json:"color,omitempty"`
 	Footer      *Footer `json:"footer,omitempty"`
 }
 
@@ -37,7 +37,7 @@ func (d *Notifier) Send(messages []string) error {
 		payload := WebhookPayload{
 			Embeds: []Embed{
 				{
-					Title:       "Latest Shift Codes!",
+					Title:       "📢 New Shift Codes!",
 					Description: msg,
 					Color:       0x00ff00, // green
 					Footer:      &Footer{Text: "BL-Shifts"},
