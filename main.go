@@ -20,7 +20,7 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// --- Storage setup ---
+	// Setup storage
 	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		store = redis.NewStore(cfg.RedisAddr)
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Retriever setup ---
+	// Setup retrievers
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -45,7 +45,7 @@ func main() {
 		),
 	}
 
-	// --- Notifier setup ---
+	// Setup notifiers
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -71,7 +71,6 @@ func main() {
 		var postTitle string
 		var redditErr error
 
-		// --- Fetch codes ---
 		for _, retriever := range retrieversList {
 			codes, createdUTC, title, err := retriever.GetCodes()
 			if err != nil {
@@ -88,7 +87,6 @@ func main() {
 		}
 
 		if redditErr != nil && len(allCodes) == 0 {
-			// Notify Discord if Reddit blocked/failure
 			for _, notifier := range notifiersList {
 				err := notifier.Send([]string{fmt.Sprintf("⚠️ Reddit fetch failed: %v", redditErr)})
 				if err != nil {
@@ -98,7 +96,7 @@ func main() {
 			continue
 		}
 
-		// --- Remove duplicates ---
+		// remove duplicates
 		existingCodes := map[string]bool{}
 		finalCodes := []string{}
 		for _, code := range allCodes {
@@ -108,7 +106,6 @@ func main() {
 			}
 		}
 
-		// --- Save new codes ---
 		ctx := context.Background()
 		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
 		if err != nil {
@@ -121,30 +118,27 @@ func main() {
 			continue
 		}
 
-		// --- Format post age ---
+		// Format post age
 		postAge := ""
 		if postTimestamp != 0 {
 			duration := time.Since(time.Unix(int64(postTimestamp), 0))
 			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 		}
 
-		// --- Build Discord message ---
+		// Prepare Discord message
 		message := fmt.Sprintf(
-			"**New Shift Codes**\n"+
-				"Redeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
+			"**New Shift Codes**\nRedeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
 				"**Post:** %s\n"+
 				"**Codes:**\n%s",
 			postTitle,
 			strings.Join(codesToSend, "\n"),
 		)
-
 		if postAge != "" {
 			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
-		// --- Send to Discord ---
 		for _, notifier := range notifiersList {
 			err := notifier.Send([]string{message})
 			if err != nil {
