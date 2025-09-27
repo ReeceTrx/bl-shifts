@@ -20,7 +20,6 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// Setup storage
 	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		store = redis.NewStore(cfg.RedisAddr)
@@ -67,22 +66,26 @@ func main() {
 		runs++
 
 		allCodes := []string{}
-		var postTimestamp float64
-		postTitleMessage := ""
+		postAge := ""
+		postTitle := ""
 
-		// Get codes from each retriever
 		for _, retriever := range retrieversList {
-			codes, createdUTC, postTitle, err := retriever.GetCodes()
+			codes, createdUTC, title, err := retriever.(*reddit.RedditRetriever).GetCodes()
 			if err != nil {
-				slog.Error("failed to get codes from retriever", "error", err)
+				slog.Error("failed to get codes from Reddit", "error", err)
 				lastRunError = true
+				continue
+			}
+			if codes == nil || len(codes) == 0 {
+				slog.Info("no new shift codes found in the latest post")
 				continue
 			}
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
-				postTimestamp = createdUTC
-				postTitleMessage = postTitle
+				duration := time.Since(time.Unix(int64(createdUTC), 0))
+				postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 			}
+			postTitle = title
 		}
 
 		if lastRunError {
@@ -108,34 +111,26 @@ func main() {
 			continue
 		}
 		if len(codesToSend) == 0 {
-			slog.Info("no new shift codes found")
+			slog.Info("no new shift codes to send")
 			continue
 		}
 
-		// Format post age
-		postAge := ""
-		if postTimestamp != 0 {
-			postTime := time.Unix(int64(postTimestamp), 0)
-			duration := time.Since(postTime)
-			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
-		}
-
-		// Prepare Discord message
+		// Format Discord message
 		message := fmt.Sprintf(
-			"**New Shift Codes**\n%s\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
-			postTitleMessage,
+			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
 			strings.Join(codesToSend, "\n"),
 		)
+		if postTitle != "" {
+			message += fmt.Sprintf("\n\n*Post title:* %s", postTitle)
+		}
 		if postAge != "" {
-			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+			message += fmt.Sprintf("\n*Post age:* %s", postAge)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
-		// Send to Discord
 		for _, notifier := range notifiersList {
-			err := notifier.Send([]string{message})
-			if err != nil {
+			if err := notifier.Send([]string{message}); err != nil {
 				slog.Error("failed to send notification", "error", err)
 				lastRunError = true
 			}
