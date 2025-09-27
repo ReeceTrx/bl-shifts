@@ -1,5 +1,4 @@
 {
-  "discord_webhook_url": "https://discord.com/api/webhooks/1421271197445914654/gshgCxy5BJNLDvMZNKKQLCdXAblv6h-OWPkH-cSdgxcF6oR8UFflZ6FhjfGxSDBY6Hj9",
   "subreddit": "borderlandsshiftcodes",
   "interval_minutes": 30,
   "use_redis": false
