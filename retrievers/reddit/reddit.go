@@ -52,11 +52,15 @@ func (r *RedditRetriever) getToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode == 403 || strings.Contains(string(body), "Whoa there") {
+		return "", fmt.Errorf("reddit blocked the request (status %d). Possibly too many requests from this IP", resp.StatusCode)
+	}
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("failed to get Reddit token: %d", resp.StatusCode)
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -117,7 +121,6 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
 	codes := codeRegex.FindAllString(title, -1)
 
-	// Return only the latest 3 codes
 	if len(codes) > 3 {
 		codes = codes[:3]
 	}
