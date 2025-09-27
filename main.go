@@ -33,9 +33,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Pass Reddit credentials from config
 	retrievers := []retrievers.Retriever{
-		reddit.NewRetriever("borderlandsshiftcodes"),
+		reddit.NewRetriever(
+			"borderlandsshiftcodes",
+			cfg.RedditClientID,
+			cfg.RedditClientSecret,
+			cfg.RedditUserAgent,
+		),
 	}
+
 	notifiers := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiers = append(notifiers, discord.NewNotifier(cfg.DiscordWebhookURL))
