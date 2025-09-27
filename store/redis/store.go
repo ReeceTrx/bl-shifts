@@ -4,6 +4,7 @@ import (
 	"bl-shifts/store"
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -14,7 +15,9 @@ type redisStore struct {
 
 func NewStore(address string) store.Store {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: address,
+		Addr:     address,
+		Password: os.Getenv("REDIS_PASSWORD"), // use the password from environment
+		DB:       0,                            // default DB
 	})
 	return &redisStore{
 		rdb: rdb,
