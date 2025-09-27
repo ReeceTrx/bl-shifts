@@ -52,15 +52,11 @@ func (r *RedditRetriever) getToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-
-	if resp.StatusCode == 403 || strings.Contains(string(body), "Whoa there") {
-		return "", fmt.Errorf("reddit blocked the request (status %d). Possibly too many requests from this IP", resp.StatusCode)
-	}
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("failed to get Reddit token: %d", resp.StatusCode)
 	}
 
+	body, _ := ioutil.ReadAll(resp.Body)
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -75,7 +71,7 @@ func (r *RedditRetriever) getToken() (string, error) {
 func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	token, err := r.getToken()
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("failed to get Reddit token: %w", err)
+		return nil, 0, "", err
 	}
 
 	url := fmt.Sprintf("https://oauth.reddit.com/r/%s/new.json?limit=1", r.Subreddit)
