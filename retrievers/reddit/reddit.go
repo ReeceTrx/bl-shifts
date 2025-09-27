@@ -17,13 +17,23 @@ type RedditRetriever struct {
 	UserAgent    string
 }
 
+// NewRetriever creates a new RedditRetriever
+func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
+	return &RedditRetriever{
+		Subreddit:    subreddit,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		UserAgent:    userAgent,
+	}
+}
+
 // RedditPost struct for parsing Reddit JSON
 type RedditPost struct {
 	Data struct {
 		Children []struct {
 			Data struct {
 				Title      string  `json:"title"`
-				CreatedUTC float64 `json:"created_utc"` // Reddit timestamp
+				CreatedUTC float64 `json:"created_utc"`
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
@@ -59,7 +69,7 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	}
 
 	if len(result.Data.Children) == 0 {
-		return nil, 0, nil // no posts
+		return nil, 0, nil
 	}
 
 	newest := result.Data.Children[0].Data
@@ -78,8 +88,7 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	return codes, created, nil
 }
 
-// Dummy getToken function (you need your Reddit OAuth code here)
+// Dummy getToken function — replace with real OAuth token retrieval
 func (r *RedditRetriever) getToken() (string, error) {
-	// Implement your OAuth token retrieval here
 	return "YOUR_REDDIT_OAUTH_TOKEN", nil
 }
