@@ -31,6 +31,16 @@ type RedditPost struct {
 	} `json:"data"`
 }
 
+// NewRetriever creates a new RedditRetriever instance
+func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
+	return &RedditRetriever{
+		Subreddit:    subreddit,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		UserAgent:    userAgent,
+	}
+}
+
 // getToken fetches a valid OAuth token from Reddit
 func (r *RedditRetriever) getToken() (string, error) {
 	data := url.Values{}
@@ -52,11 +62,12 @@ func (r *RedditRetriever) getToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
+	body, _ := ioutil.ReadAll(resp.Body)
+
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("failed to get Reddit token: %d", resp.StatusCode)
+		return "", fmt.Errorf("failed to get Reddit token: %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -71,7 +82,7 @@ func (r *RedditRetriever) getToken() (string, error) {
 func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	token, err := r.getToken()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", fmt.Errorf("failed to get Reddit token: %w", err)
 	}
 
 	url := fmt.Sprintf("https://oauth.reddit.com/r/%s/new.json?limit=1", r.Subreddit)
@@ -106,14 +117,14 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	}
 
 	if len(result.Data.Children) == 0 {
-		return nil, 0, "", nil // no posts
+		return nil, 0, "", fmt.Errorf("no posts found in subreddit %s", r.Subreddit)
 	}
 
 	newest := result.Data.Children[0].Data
 	title := newest.Title
 	created := newest.CreatedUTC
 
-	// Regex: match 5 blocks of 5 characters
+	// Regex: match 5 blocks of 5 characters (typical BL shift code)
 	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
 	codes := codeRegex.FindAllString(title, -1)
 
@@ -123,14 +134,4 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	}
 
 	return codes, created, title, nil
-}
-
-// NewRetriever creates a new RedditRetriever instance
-func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
-	return &RedditRetriever{
-		Subreddit:    subreddit,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		UserAgent:    userAgent,
-	}
 }
