@@ -20,7 +20,7 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// Setup storage
+	// --- Storage setup ---
 	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
 		store = redis.NewStore(cfg.RedisAddr)
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup Reddit retriever
+	// --- Reddit retriever ---
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -45,7 +45,7 @@ func main() {
 		),
 	}
 
-	// Setup Discord notifier
+	// --- Discord notifier ---
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -71,18 +71,15 @@ func main() {
 		var postTitle string
 		var redditErr error
 
-		// Get codes from each retriever
+		// --- Fetch from Reddit ---
 		for _, retriever := range retrieversList {
 			codes, createdUTC, title, err := retriever.GetCodes()
 			if err != nil {
 				slog.Error("failed to get codes from Reddit", "error", err)
-				fmt.Println("Reddit fetch error:", err) // log in workflow
 				redditErr = err
 				lastRunError = true
 				continue
 			}
-			fmt.Println("Reddit post title:", title)
-			fmt.Println("Codes found:", codes)
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
 				postTimestamp = createdUTC
@@ -91,6 +88,7 @@ func main() {
 		}
 
 		if redditErr != nil && len(allCodes) == 0 {
+			// send warning to Discord if blocked
 			for _, notifier := range notifiersList {
 				err := notifier.Send([]string{fmt.Sprintf("⚠️ Reddit fetch failed: %v", redditErr)})
 				if err != nil {
@@ -100,7 +98,7 @@ func main() {
 			continue
 		}
 
-		// Remove duplicates
+		// --- Remove duplicates ---
 		existingCodes := map[string]bool{}
 		finalCodes := []string{}
 		for _, code := range allCodes {
@@ -110,7 +108,7 @@ func main() {
 			}
 		}
 
-		// Save new codes
+		// --- Save new codes ---
 		ctx := context.Background()
 		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
 		if err != nil {
@@ -123,16 +121,17 @@ func main() {
 			continue
 		}
 
-		// Format post age
+		// --- Calculate post age ---
 		postAge := ""
 		if postTimestamp != 0 {
 			duration := time.Since(time.Unix(int64(postTimestamp), 0))
 			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 		}
 
-		// Prepare Discord message
+		// --- Format Discord message ---
 		message := fmt.Sprintf(
-			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n**Post:** %s\n%s",
+			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n"+
+				"**Post:** %s\n%s",
 			postTitle,
 			strings.Join(codesToSend, "\n"),
 		)
@@ -142,7 +141,7 @@ func main() {
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
-		// Send to Discord
+		// --- Send to Discord ---
 		for _, notifier := range notifiersList {
 			err := notifier.Send([]string{message})
 			if err != nil {
