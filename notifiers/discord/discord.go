@@ -37,7 +37,7 @@ func (d *Notifier) Send(messages []string) error {
 		payload := WebhookPayload{
 			Embeds: []Embed{
 				{
-					Title:       "New Shift Codes",
+					Title:       "Latest Shift Codes!",
 					Description: msg,
 					Color:       0x00ff00, // green
 					Footer:      &Footer{Text: "BL-Shifts"},
