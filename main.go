@@ -68,11 +68,11 @@ func main() {
 
 		allCodes := []string{}
 		var postTimestamp float64
-		newestPostTitle := ""
+		postTitleMessage := ""
 
 		// Get codes from each retriever
 		for _, retriever := range retrieversList {
-			codes, createdUTC, title, err := retriever.GetCodes() // <- retriever must return title too
+			codes, createdUTC, postTitle, err := retriever.GetCodes()
 			if err != nil {
 				slog.Error("failed to get codes from retriever", "error", err)
 				lastRunError = true
@@ -81,9 +81,7 @@ func main() {
 			allCodes = append(allCodes, codes...)
 			if createdUTC != 0 {
 				postTimestamp = createdUTC
-			}
-			if title != "" {
-				newestPostTitle = title
+				postTitleMessage = postTitle
 			}
 		}
 
@@ -109,24 +107,27 @@ func main() {
 			lastRunError = true
 			continue
 		}
-
-		// Prepare Discord message
-		message := "**New Shift Codes**\n"
-		if newestPostTitle != "" {
-			message += fmt.Sprintf("Latest post: *%s*\n", newestPostTitle)
-		}
-		message += "Redeem at https://shift.gearboxsoftware.com/rewards\n\n"
-
-		if len(codesToSend) > 0 {
-			message += "```\n" + strings.Join(codesToSend, "\n") + "\n```"
-		} else {
-			message += "✅ Test message: BL-Shifts workflow is running!"
+		if len(codesToSend) == 0 {
+			slog.Info("no new shift codes found")
+			continue
 		}
 
+		// Format post age
+		postAge := ""
 		if postTimestamp != 0 {
 			postTime := time.Unix(int64(postTimestamp), 0)
 			duration := time.Since(postTime)
-			message += fmt.Sprintf("\n\n*Post age: %.0f minutes ago*", duration.Minutes())
+			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
+		}
+
+		// Prepare Discord message
+		message := fmt.Sprintf(
+			"**New Shift Codes**\n%s\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
+			postTitleMessage,
+			strings.Join(codesToSend, "\n"),
+		)
+		if postAge != "" {
+			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
