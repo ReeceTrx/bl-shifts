@@ -127,7 +127,7 @@ func main() {
 
 		// Prepare Discord message
 		message := fmt.Sprintf(
-			"**New Shift Codes**\nRedeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
+			"**Latest Shift Codes**\nRedeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
 				"**Post:** %s\n"+
 				"**Codes:**\n%s",
 			postTitle,
