@@ -25,20 +25,11 @@ type RedditPost struct {
 		Children []struct {
 			Data struct {
 				Title      string  `json:"title"`
-				CreatedUTC float64 `json:"created_utc"`
+				SelfText   string  `json:"selftext"`    // the post body
+				CreatedUTC float64 `json:"created_utc"` // timestamp
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
-}
-
-// NewRetriever creates a new RedditRetriever instance
-func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
-	return &RedditRetriever{
-		Subreddit:    subreddit,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		UserAgent:    userAgent,
-	}
 }
 
 // getToken fetches a valid OAuth token from Reddit
@@ -62,12 +53,11 @@ func (r *RedditRetriever) getToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("failed to get Reddit token: %d, body: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("failed to get Reddit token: %d", resp.StatusCode)
 	}
 
+	body, _ := ioutil.ReadAll(resp.Body)
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -78,11 +68,11 @@ func (r *RedditRetriever) getToken() (string, error) {
 	return result.AccessToken, nil
 }
 
-// GetCodes fetches the latest post and extracts up to 3 BL shift codes
+// GetCodes fetches the latest post and extracts up to 3 BL shift codes from the post body
 func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	token, err := r.getToken()
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("failed to get Reddit token: %w", err)
+		return nil, 0, "", err
 	}
 
 	url := fmt.Sprintf("https://oauth.reddit.com/r/%s/new.json?limit=1", r.Subreddit)
@@ -117,21 +107,32 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	}
 
 	if len(result.Data.Children) == 0 {
-		return nil, 0, "", fmt.Errorf("no posts found in subreddit %s", r.Subreddit)
+		return nil, 0, "", nil // no posts
 	}
 
 	newest := result.Data.Children[0].Data
-	title := newest.Title
+	postTitle := newest.Title
+	postBody := newest.SelfText
 	created := newest.CreatedUTC
 
-	// Regex: match 5 blocks of 5 characters (typical BL shift code)
-	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
-	codes := codeRegex.FindAllString(title, -1)
+	// Regex: match codes in the format like "BL4" or "BHRBJ-ZWHT3-W6JBK-BT3BB-CW3ZK"
+	codeRegex := regexp.MustCompile(`[A-Z0-9]{3,6}(?:-[A-Z0-9]{3,6}){0,4}`)
+	codes := codeRegex.FindAllString(postBody, -1)
 
 	// Return only the latest 3 codes
 	if len(codes) > 3 {
 		codes = codes[:3]
 	}
 
-	return codes, created, title, nil
+	return codes, created, postTitle, nil
+}
+
+// NewRetriever creates a new RedditRetriever instance
+func NewRetriever(subreddit, clientID, clientSecret, userAgent string) *RedditRetriever {
+	return &RedditRetriever{
+		Subreddit:    subreddit,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		UserAgent:    userAgent,
+	}
 }
