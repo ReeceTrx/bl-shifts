@@ -16,10 +16,35 @@ func NewNotifier(webhookURL string) *Notifier {
 	}
 }
 
-// Send sends the message array to Discord
+type Embed struct {
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Color       int    `json:"color,omitempty"`
+	Footer      *Footer `json:"footer,omitempty"`
+}
+
+type Footer struct {
+	Text string `json:"text,omitempty"`
+}
+
+type WebhookPayload struct {
+	Embeds []Embed `json:"embeds,omitempty"`
+}
+
+// Send sends the message array to Discord as embeds
 func (d *Notifier) Send(messages []string) error {
 	for _, msg := range messages {
-		payload := map[string]string{"content": msg} // Only send your message; no test line
+		payload := WebhookPayload{
+			Embeds: []Embed{
+				{
+					Title:       "New Shift Codes",
+					Description: msg,
+					Color:       0x00ff00, // green
+					Footer:      &Footer{Text: "BL-Shifts"},
+				},
+			},
+		}
+
 		body, _ := json.Marshal(payload)
 
 		req, err := http.NewRequest("POST", d.WebhookURL, bytes.NewBuffer(body))
