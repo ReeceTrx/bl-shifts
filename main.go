@@ -105,33 +105,30 @@ func main() {
 			lastRunError = true
 			continue
 		}
-		if len(codesToSend) == 0 {
-			slog.Info("no new shift codes found")
-			continue
-		}
-
-		// Format post age
-		postAge := ""
-		if postTimestamp != 0 {
-			postTime := time.Unix(int64(postTimestamp), 0)
-			duration := time.Since(postTime)
-			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
-		}
 
 		// Prepare Discord message
-		message := fmt.Sprintf(
-			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
-			strings.Join(codesToSend, "\n"),
-		)
-		if postAge != "" {
-			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+		messageParts := []string{"✅ Test message: BL-Shifts workflow is running!"}
+
+		if len(codesToSend) > 0 {
+			msg := fmt.Sprintf(
+				"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
+				strings.Join(codesToSend, "\n"),
+			)
+
+			if postTimestamp != 0 {
+				postTime := time.Unix(int64(postTimestamp), 0)
+				duration := time.Since(postTime)
+				msg += fmt.Sprintf("\n\n*Post age: %.0f minutes ago*", duration.Minutes())
+			}
+
+			messageParts = append(messageParts, msg)
 		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
 		// Send to Discord
 		for _, notifier := range notifiersList {
-			err := notifier.Send([]string{message})
+			err := notifier.Send(messageParts)
 			if err != nil {
 				slog.Error("failed to send notification", "error", err)
 				lastRunError = true
