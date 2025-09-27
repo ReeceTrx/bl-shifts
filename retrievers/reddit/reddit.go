@@ -108,7 +108,7 @@ func (r *RedditRetriever) GetCodes() ([]string, error) {
 	}
 
 	// Regex to match BL shift codes (adjust if needed)
-	codeRegex := regexp.MustCompile(`\bBL[A-Z0-9]{2,10}\b`)
+	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
 
 	codes := []string{}
 	for _, child := range result.Data.Children {
