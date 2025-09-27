@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Reddit retriever ---
+	// --- Retriever setup ---
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -45,7 +45,7 @@ func main() {
 		),
 	}
 
-	// --- Discord notifier ---
+	// --- Notifier setup ---
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -71,7 +71,7 @@ func main() {
 		var postTitle string
 		var redditErr error
 
-		// --- Fetch from Reddit ---
+		// --- Fetch codes ---
 		for _, retriever := range retrieversList {
 			codes, createdUTC, title, err := retriever.GetCodes()
 			if err != nil {
@@ -88,7 +88,7 @@ func main() {
 		}
 
 		if redditErr != nil && len(allCodes) == 0 {
-			// send warning to Discord if blocked
+			// Notify Discord if Reddit blocked/failure
 			for _, notifier := range notifiersList {
 				err := notifier.Send([]string{fmt.Sprintf("⚠️ Reddit fetch failed: %v", redditErr)})
 				if err != nil {
@@ -121,26 +121,26 @@ func main() {
 			continue
 		}
 
-		// --- Calculate post age ---
+		// --- Format post age ---
 		postAge := ""
 		if postTimestamp != 0 {
 			duration := time.Since(time.Unix(int64(postTimestamp), 0))
 			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
 		}
 
-		// --- Format Discord message ---
-	message := fmt.Sprintf(
-    "**New Shift Codes**\n"+
-        "Redeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
-        "**Post:** %s\n"+
-        "**Codes:**\n%s",
-    postTitle,
-    strings.Join(codesToSend, "\n"),
-)
-if postAge != "" {
-    message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
-}
+		// --- Build Discord message ---
+		message := fmt.Sprintf(
+			"**New Shift Codes**\n"+
+				"Redeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
+				"**Post:** %s\n"+
+				"**Codes:**\n%s",
+			postTitle,
+			strings.Join(codesToSend, "\n"),
+		)
 
+		if postAge != "" {
+			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+		}
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
