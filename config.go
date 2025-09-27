@@ -25,17 +25,16 @@ func LoadConfig() *config {
 	var redditClientSecret string
 	var redditUserAgent string
 
-	// Command-line flags (optional)
 	flag.StringVar(&redisAddr, "redis-addr", "", "Address of the Redis server (e.g., localhost:6379)")
 	flag.StringVar(&filename, "filename", "", "Path to the file to store seen codes")
 	flag.StringVar(&discordWebhookURL, "discord-webhook-url", "", "Discord webhook URL for notifications")
+	flag.StringVar(&redditClientID, "reddit-client-id", "", "Reddit API client ID")
+	flag.StringVar(&redditClientSecret, "reddit-client-secret", "", "Reddit API client secret")
+	flag.StringVar(&redditUserAgent, "reddit-user-agent", "", "Reddit API user agent")
 	flag.IntVar(&intervalMinutes, "interval-minutes", 0, "Interval in minutes between checks (default: run once and exit)")
-	flag.StringVar(&redditClientID, "reddit-client-id", "", "Reddit client ID")
-	flag.StringVar(&redditClientSecret, "reddit-client-secret", "", "Reddit client secret")
-	flag.StringVar(&redditUserAgent, "reddit-user-agent", "", "Reddit user agent")
 	flag.Parse()
 
-	// Override with environment variables if present
+	// Read from environment variables if they exist
 	if envRedisAddr := os.Getenv("REDIS_ADDR"); envRedisAddr != "" {
 		redisAddr = envRedisAddr
 	}
