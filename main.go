@@ -10,6 +10,7 @@ import (
 	"bl-shifts/store/redis"
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -19,22 +20,22 @@ import (
 func main() {
 	cfg := LoadConfig()
 
-	// Storage setup
-	var storeInstance store.Store
+	// Setup storage
+	var store store.Store
 	if cfg.RedisAddr != "" && cfg.Filename == "" {
-		storeInstance = redis.NewStore(cfg.RedisAddr)
+		store = redis.NewStore(cfg.RedisAddr)
 	} else if cfg.Filename != "" && cfg.RedisAddr == "" {
-		storeInstance = file.NewStore(cfg.Filename)
+		store = file.NewStore(cfg.Filename)
 	} else if cfg.Filename == "" && cfg.RedisAddr == "" {
 		slog.Warn("no storage method specified, defaulting to file 'codes.json'")
-		storeInstance = file.NewStore("codes.json")
+		store = file.NewStore("codes.json")
 	} else {
 		slog.Error("either REDIS_ADDR or FILENAME must be set, but not both")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	// Reddit retriever
+	// Setup retrievers
 	retrieversList := []retrievers.Retriever{
 		reddit.NewRetriever(
 			"borderlandsshiftcodes",
@@ -44,7 +45,7 @@ func main() {
 		),
 	}
 
-	// Discord notifier
+	// Setup notifiers
 	notifiersList := []notifiers.Notifier{}
 	if cfg.DiscordWebhookURL != "" {
 		notifiersList = append(notifiersList, discord.NewNotifier(cfg.DiscordWebhookURL))
@@ -61,54 +62,80 @@ func main() {
 			slog.Info("waiting for next interval", "minutes", cfg.IntervalMinutes)
 			time.Sleep(time.Duration(cfg.IntervalMinutes) * time.Minute)
 		}
-		runs++
 		slog.Info("checking for new shift codes")
 		lastRunError = false
+		runs++
 
+		allCodes := []string{}
+		var postTimestamp float64
+
+		// Get codes from each retriever
 		for _, retriever := range retrieversList {
-			// Get codes and post timestamp
 			codes, createdUTC, err := retriever.GetCodes()
 			if err != nil {
 				slog.Error("failed to get codes from retriever", "error", err)
 				lastRunError = true
 				continue
 			}
-			if len(codes) == 0 {
-				slog.Info("no new codes found in latest post")
-				continue
+			allCodes = append(allCodes, codes...)
+			if createdUTC != 0 {
+				postTimestamp = createdUTC
 			}
+		}
 
-			// Filter out already sent codes
-			ctx := context.Background()
-			codesToSend, err := storeInstance.FilterAndSaveCodes(ctx, codes)
+		if lastRunError {
+			continue
+		}
+
+		// Remove duplicates
+		existingCodes := map[string]bool{}
+		finalCodes := []string{}
+		for _, code := range allCodes {
+			if !existingCodes[code] {
+				finalCodes = append(finalCodes, code)
+				existingCodes[code] = true
+			}
+		}
+
+		// Save new codes
+		ctx := context.Background()
+		codesToSend, err := store.FilterAndSaveCodes(ctx, finalCodes)
+		if err != nil {
+			slog.Error("failed to filter codes", "error", err)
+			lastRunError = true
+			continue
+		}
+		if len(codesToSend) == 0 {
+			slog.Info("no new shift codes found")
+			continue
+		}
+
+		// Format post age
+		postAge := ""
+		if postTimestamp != 0 {
+			postTime := time.Unix(int64(postTimestamp), 0)
+			duration := time.Since(postTime)
+			postAge = fmt.Sprintf("%.0f minutes ago", duration.Minutes())
+		}
+
+		// Prepare Discord message
+		message := fmt.Sprintf(
+			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n%s",
+			strings.Join(codesToSend, "\n"),
+		)
+		if postAge != "" {
+			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+		}
+
+		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
+
+		// Send to Discord
+		for _, notifier := range notifiersList {
+			err := notifier.Send([]string{message})
 			if err != nil {
-				slog.Error("failed to filter codes", "error", err)
+				slog.Error("failed to send notification", "error", err)
 				lastRunError = true
-				continue
 			}
-			if len(codesToSend) == 0 {
-				slog.Info("all codes already sent")
-				continue
-			}
-
-			// Calculate post age
-			postTime := time.Unix(int64(createdUTC), 0)
-			age := time.Since(postTime).Round(time.Minute)
-
-			// Build Discord message
-			message := "🎁 New Shift Code(s) - posted " + age.String() + " ago:\n" +
-				strings.Join(codesToSend, "\n") +
-				"\n\nRedeem at https://shift.gearboxsoftware.com/rewards"
-
-			for _, notifier := range notifiersList {
-				err := notifier.Send([]string{message})
-				if err != nil {
-					slog.Error("failed to send notification", "error", err)
-					lastRunError = true
-				}
-			}
-
-			slog.Info("sent codes to Discord", "codes", codesToSend)
 		}
 	}
 
