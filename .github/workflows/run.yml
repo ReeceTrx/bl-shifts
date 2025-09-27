@@ -14,9 +14,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-      - name: Build and Run
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          go mod tidy
-          go run .
+- name: Build and Run
+  env:
+    DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+    REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+    REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+  run: |
+    go mod tidy
+    go run .
