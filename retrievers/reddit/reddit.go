@@ -68,16 +68,17 @@ func (r *RedditRetriever) getToken() (string, error) {
 }
 
 // GetCodes fetches the latest post and extracts up to 3 BL shift codes
-func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
+// Returns: codes, post timestamp, post title, error
+func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	token, err := r.getToken()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 
 	url := fmt.Sprintf("https://oauth.reddit.com/r/%s/new.json?limit=1", r.Subreddit)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 
 	req.Header.Set("User-Agent", r.UserAgent)
@@ -86,7 +87,7 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	defer resp.Body.Close()
 
@@ -94,19 +95,19 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 
 	// Detect Reddit blocks / rate-limiting
 	if resp.StatusCode == 403 || strings.Contains(string(body), "Whoa there") {
-		return nil, 0, fmt.Errorf("reddit blocked the request (status %d). Possibly too many requests from this IP", resp.StatusCode)
+		return nil, 0, "", fmt.Errorf("reddit blocked the request (status %d). Possibly too many requests from this IP", resp.StatusCode)
 	}
 	if resp.StatusCode != 200 {
-		return nil, 0, fmt.Errorf("unexpected error code from Reddit: %d", resp.StatusCode)
+		return nil, 0, "", fmt.Errorf("unexpected error code from Reddit: %d", resp.StatusCode)
 	}
 
 	var result RedditPost
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 
 	if len(result.Data.Children) == 0 {
-		return nil, 0, nil // no posts
+		return nil, 0, "", nil // no posts
 	}
 
 	newest := result.Data.Children[0].Data
@@ -122,7 +123,7 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 		codes = codes[:3]
 	}
 
-	return codes, created, nil
+	return codes, created, title, nil
 }
 
 // NewRetriever creates a new RedditRetriever instance
