@@ -68,7 +68,6 @@ func (r *RedditRetriever) getToken() (string, error) {
 }
 
 // GetCodes fetches the latest post and extracts up to 3 BL shift codes
-// Returns: codes, post timestamp, post title, error
 func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	token, err := r.getToken()
 	if err != nil {
