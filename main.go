@@ -129,15 +129,18 @@ func main() {
 		}
 
 		// --- Format Discord message ---
-		message := fmt.Sprintf(
-			"**New Shift Codes**\nHere are the latest shift codes, redeem at https://shift.gearboxsoftware.com/rewards\n\n"+
-				"**Post:** %s\n%s",
-			postTitle,
-			strings.Join(codesToSend, "\n"),
-		)
-		if postAge != "" {
-			message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
-		}
+	message := fmt.Sprintf(
+    "**New Shift Codes**\n"+
+        "Redeem at: https://shift.gearboxsoftware.com/rewards\n\n"+
+        "**Post:** %s\n"+
+        "**Codes:**\n%s",
+    postTitle,
+    strings.Join(codesToSend, "\n"),
+)
+if postAge != "" {
+    message += fmt.Sprintf("\n\n*Post age: %s*", postAge)
+}
+
 
 		slog.Info("sending new shift codes", "codes", strings.Join(codesToSend, ", "))
 
