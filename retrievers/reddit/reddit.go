@@ -1,14 +1,35 @@
+package reddit
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"regexp"
+	"time"
+)
+
+// RedditRetriever represents a Reddit API retriever
+type RedditRetriever struct {
+	Subreddit    string
+	ClientID     string
+	ClientSecret string
+	UserAgent    string
+}
+
+// RedditPost struct for parsing Reddit JSON
 type RedditPost struct {
 	Data struct {
 		Children []struct {
 			Data struct {
-				Title     string  `json:"title"`
+				Title      string  `json:"title"`
 				CreatedUTC float64 `json:"created_utc"` // Reddit timestamp
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
 }
 
+// GetCodes fetches the newest post and extracts up to 3 BL shift codes
 func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	token, err := r.getToken()
 	if err != nil {
@@ -49,10 +70,16 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, error) {
 	codeRegex := regexp.MustCompile(`[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`)
 	codes := codeRegex.FindAllString(title, -1)
 
-	// Return **only the latest 3 codes**
+	// Only latest 3 codes
 	if len(codes) > 3 {
 		codes = codes[:3]
 	}
 
 	return codes, created, nil
+}
+
+// Dummy getToken function (you need your Reddit OAuth code here)
+func (r *RedditRetriever) getToken() (string, error) {
+	// Implement your OAuth token retrieval here
+	return "YOUR_REDDIT_OAUTH_TOKEN", nil
 }
