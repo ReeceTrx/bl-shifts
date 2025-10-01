@@ -116,7 +116,7 @@ func (r *RedditRetriever) GetCodes() ([]string, float64, string, error) {
 	created := newest.CreatedUTC
 
 	// Regex: match codes in the format like "BL4" or "BHRBJ-ZWHT3-W6JBK-BT3BB-CW3ZK"
-	codeRegex := regexp.MustCompile(`[A-Z0-9]{3,6}(?:-[A-Z0-9]{3,6}){0,4}`)
+    codeRegex := regexp.MustCompile(`\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}\b`)
 	codes := codeRegex.FindAllString(postBody, -1)
 
 	// Return only the latest 3 codes
